@@ -60,45 +60,180 @@ calcMeanFlowVelocity <- function(row, useKreps = FALSE) {
 }
 
 
-# Erzeuge einen Default-Datensatz (wird verwendet, falls keine Datei hochgeladen wird)
+# Beispielhafter Startdatensatz mit 20 Lotrechten
+# generate_default_dataset <- function() {
+#   set.seed(42)
+#   lotrechten <- 1:20
+#   lage <- seq(0, 4.75, length.out = 20)  # gleichmäßiger Abstand
+#   
+#   # Tiefe folgt einem U-förmigen Profil mit etwas Asymmetrie
+#   tiefe <- 1 - (lage - 2.5)^2 / 6 + runif(20, -0.05, 0.05)
+#   tiefe <- round(pmax(tiefe, 0.3), 2)
+#   
+#   # Geschwindigkeit je nach Tiefe etwas gestaffelt (3-Punkt Beispiel)
+#   v_02 <- round(runif(20, 0.3, 0.5), 3)
+#   v_06 <- round(v_02 + runif(20, 0.1, 0.2), 3)
+#   v_08 <- round(v_06 - runif(20, 0.05, 0.1), 3)
+#   
+#   # Methode = 3 für 3-Punkt
+#   methode <- rep(3, 20)
+#   
+#   df <- data.frame(
+#     Zeit = Sys.time(),
+#     Lotrechte = lotrechten,
+#     `Lage (m)` = lage,
+#     Methode = methode,
+#     `Tiefe (m)` = tiefe,
+#     `0,2 (m/s)` = v_02,
+#     `0,6 (m/s)` = v_06,
+#     `0,8 (m/s)` = v_08,
+#     check.names = FALSE
+#   )
+#   
+#   return(df)
+# }
+
 createDefaultData <- function() {
+  set.seed(123)  
+  
+  # -----------------------
+  # 1) Beispiel‐Querschnitt erzeugen
+  # -----------------------
+  n_lotrechte <- 12
+  lage_m <- seq(0, 11, length.out = n_lotrechte)
+  dist_norm <- ((lage_m - mean(lage_m))^2) / max((lage_m - mean(lage_m))^2)
+  basis_tiefe <- 0.5 + (1 - dist_norm) * 1.5
+  tiefe_jitter <- runif(n_lotrechte, -0.05, 0.05)
+  tiefe_m <- round(basis_tiefe + tiefe_jitter, 3)
+  
+  methode <- c(
+    "0", "1 Punkt", "2 Punkt", "3 Punkt", "5 Punkt", "6 Punkt",
+    "3 Punkt", "2 Punkt", "1 Punkt", "2 Punkt", "3 Punkt", "0"
+  )
+  
+  # Tiefen‐Koordinaten für Messpunkte
+  x_Oberfl  <- rep(0, n_lotrechte)
+  x_02      <- round(tiefe_m * 0.2, 3)
+  x_04      <- round(tiefe_m * 0.4, 3)
+  x_05      <- round(tiefe_m * 0.5, 3)
+  x_06      <- round(tiefe_m * 0.6, 3)
+  x_062     <- round(tiefe_m * 0.62, 3)
+  x_07      <- round(tiefe_m * 0.7, 3)
+  x_08      <- round(tiefe_m * 0.8, 3)
+  x_09      <- round(tiefe_m * 0.9, 3)
+  x_Sohle   <- round(tiefe_m * 1.0, 3)
+  
+  # Basis‐Geschwindigkeitsprofil (Parabel + zufälliges Rauschen)
+  v_max_basis <- seq(0.8, 0.6, length.out = n_lotrechte) + runif(n_lotrechte, -0.05, 0.05)
+  v_max_basis <- round(pmax(v_max_basis, 0.3), 3)
+  
+  v_Oberfl <- round(v_max_basis * (1 - (0 / tiefe_m)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_02     <- round(v_max_basis * (1 - (0.2)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_04     <- round(v_max_basis * (1 - (0.4)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_05     <- round(v_max_basis * (1 - (0.5)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_06     <- round(v_max_basis * (1 - (0.6)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_062    <- round(v_max_basis * (1 - (0.62)^2)+ runif(n_lotrechte, -0.01, 0.01), 3)
+  v_07     <- round(v_max_basis * (1 - (0.7)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_08     <- round(v_max_basis * (1 - (0.8)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_09     <- round(v_max_basis * (1 - (0.9)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  v_Sohle  <- round(v_max_basis * (1 - (1.0)^2) + runif(n_lotrechte, -0.01, 0.01), 3)
+  
+  # Spaltenweise NA setzen, je nach Methode:
+  for (i in seq_len(n_lotrechte)) {
+    m <- methode[i]
+    if (m == "0") {
+      v_Oberfl[i] <- v_02[i] <- v_04[i] <- v_05[i] <- v_06[i] <- 
+        v_062[i]    <- v_07[i] <- v_08[i] <- v_09[i] <- v_Sohle[i] <- NA
+    }
+    if (m == "1 Punkt") {
+      v_Oberfl[i] <- v_02[i] <- v_04[i] <- v_05[i] <- v_062[i] <-
+        v_07[i]     <- v_08[i] <- v_09[i] <- v_Sohle[i] <- NA
+    }
+    if (m == "2 Punkt") {
+      v_Oberfl[i] <- v_04[i] <- v_05[i] <- v_062[i] <- 
+        v_07[i]     <- v_08[i] <- v_09[i] <- v_Sohle[i] <- NA
+    }
+    if (m == "3 Punkt") {
+      v_Oberfl[i] <- v_04[i] <- v_05[i] <- v_062[i] <- 
+        v_07[i]     <- v_09[i] <- v_Sohle[i] <- NA
+    }
+    if (m == "5 Punkt") {
+      v_04[i] <- v_05[i] <- v_062[i] <- v_07[i] <- v_09[i] <- NA
+    }
+    # "6 Punkt": alle Messpunkte bleiben gültig → nichts tun
+  }
+  
+  # -----------------------
+  # 2) DataFrame erzeugen
+  # -----------------------
   df <- data.frame(
-    "Lotrechte" = 1:10,
-    "Lage (m)" = round(seq(0.5, 4.5, length.out = 10), 2),
-    "Methode" = c("linkes Ufer", "1 Punkt", "2 Punkt", "3 Punkt", "3 Punkt", 
-                  "3 Punkt", "3 Punkt", "3 Punkt", "3 Punkt", "3 Punkt"),
-    "Tiefe (m)" = round(rep(0.25, 10), 3),
-    "Oberfl. (m/s)" = rep(0.2, 10),
-    "Oberfl. (m):" = rep(0.1, 10),
-    "0,2 (m/s)" = round(seq(0.300, 0.390, length.out = 10), 3),
-    "0,2 (m):" = round(seq(0.5, 1.4, length.out = 10), 3),
-    "0,4 (m/s)" = round(seq(0.350, 0.440, length.out = 10), 3),
-    "0,4 (m):" = round(seq(0.8, 1.7, length.out = 10), 3),
-    "0,5 (m/s)" = round(seq(0.360, 0.450, length.out = 10), 3),
-    "0,5 (m):" = round(seq(1.0, 1.9, length.out = 10), 3),
-    "0,6 (m/s)" = round(seq(0.400, 0.490, length.out = 10), 3),
-    "0,6 (m):" = round(seq(1.2, 2.1, length.out = 10), 3),
-    "0,62 (m/s)" = round(seq(0.410, 0.500, length.out = 10), 3),
-    "0,62 (m):" = round(seq(1.3, 2.2, length.out = 10), 3),
-    "0,7 (m/s)" = round(seq(0.420, 0.510, length.out = 10), 3),
-    "0,7 (m):" = round(seq(1.4, 2.3, length.out = 10), 3),
-    "0,8 (m/s)" = round(seq(0.450, 0.540, length.out = 10), 3),
-    "0,8 (m):" = round(seq(1.6, 2.5, length.out = 10), 3),
-    "0,9 (m/s)" = round(seq(0.470, 0.560, length.out = 10), 3),
-    "0,9 (m):" = round(seq(1.8, 2.7, length.out = 10), 3),
-    "Sohle (m/s)" = rep(0.1, 10),
-    "Sohle (m):" = rep(3.0, 10),
-    "mittlere Geschw. (m/s)" = NA,
-    "Flaeche (m^2)" = NA,
-    "Durchfl. (m^3/s)" = NA,
-    check.names = FALSE,
+    Lotrechte                = seq_len(n_lotrechte),
+    `Lage (m)`               = round(lage_m, 2),
+    Methode                  = methode,
+    `Tiefe (m)`              = tiefe_m,
+    `Oberfl. (m/s)`          = v_Oberfl,
+    `Oberfl. (m):`           = x_Oberfl,
+    `0,2 (m/s)`              = v_02,
+    `0,2 (m):`               = x_02,
+    `0,4 (m/s)`              = v_04,
+    `0,4 (m):`               = x_04,
+    `0,5 (m/s)`              = v_05,
+    `0,5 (m):`               = x_05,
+    `0,6 (m/s)`              = v_06,
+    `0,6 (m):`               = x_06,
+    `0,62 (m/s)`             = v_062,
+    `0,62 (m):`              = x_062,
+    `0,7 (m/s)`              = v_07,
+    `0,7 (m):`               = x_07,
+    `0,8 (m/s)`              = v_08,
+    `0,8 (m):`               = x_08,
+    `0,9 (m/s)`              = v_09,
+    `0,9 (m):`               = x_09,
+    `Sohle (m/s)`            = v_Sohle,
+    `Sohle (m):`             = x_Sohle,
+    `mittlere Geschw. (m/s)` = NA_real_,
+    `Flaeche (m^2)`          = NA_real_,
+    `Durchfl. (m^3/s)`       = NA_real_,
+    check.names    = FALSE,
     stringsAsFactors = FALSE
   )
-  for(i in 1:nrow(df)) {
-    df[i, "mittlere Geschw. (m/s)"] <- calcMeanFlowVelocity(as.list(df[i, ]), useKreps = FALSE)
-  }
+  
+  # -----------------------------------------------------------
+  # 3) GANZ AM ANFANG und ENDE: alle Tiefen‐ und Speed‐Spalten auf NA setzen
+  # -----------------------------------------------------------
+  depth_cols <- c(
+    "Oberfl. (m):", "0,2 (m):", "0,4 (m):", "0,5 (m):",
+    "0,6 (m):",   "0,62 (m):", "0,7 (m):", "0,8 (m):",
+    "0,9 (m):",   "Sohle (m):"
+  )
+  speed_cols <- c(
+    "Oberfl. (m/s)", "0,2 (m/s)", "0,4 (m/s)", "0,5 (m/s)",
+    "0,6 (m/s)",   "0,62 (m/s)", "0,7 (m/s)", "0,8 (m/s)",
+    "0,9 (m/s)",   "Sohle (m/s)"
+  )
+  
+  # tatsächlich vorhandene Spalten ermitteln
+  actual_depth_cols <- intersect(depth_cols, names(df))
+  actual_speed_cols <- intersect(speed_cols, names(df))
+  
+  # Index 1 und Index n_lotrechte auf NA setzen
+  df[1, actual_depth_cols]       <- NA
+  df[n_lotrechte, actual_depth_cols] <- NA
+  df[1, actual_speed_cols]       <- NA
+  df[n_lotrechte, actual_speed_cols] <- NA
+  
+  # -----------------------------------------------------------
+  # 4) Mittlere Fließgeschwindigkeit berechnen
+  # -----------------------------------------------------------
+  df$`mittlere Geschw. (m/s)` <- vapply(
+    seq_len(nrow(df)),
+    function(i) calcMeanFlowVelocity(df[i, ], useKreps = FALSE),
+    numeric(1)
+  )
+  
   return(df)
 }
+
 
 # -----------------------------------------------------------------------------
 # Funktion: Standardisiere den eingelesenen Datensatz
@@ -420,6 +555,7 @@ server <- function(input, output, session) {
   observe({
     if(is.null(input$file)) {
       defaultDF <- createDefaultData()
+      # defaultDF <- generate_default_dataset()
       standard <- standardizeDataset(defaultDF, useKreps = input$zweipunkt_kreps)
       original_data(defaultDF)
       active_data_line(standard$df_line)
@@ -430,10 +566,15 @@ server <- function(input, output, session) {
         Wert = c(nrow(defaultDF), "Pegel XY", 1.234, 5.678),
         stringsAsFactors = FALSE
       ))
-      pegel_info(data.frame(
-        Dummy = c("Pegel XY", "Fluss", "2025-02-14"),
-        stringsAsFactors = FALSE
-      ))
+      
+      pegel_info(
+        data.frame(
+          V1 = "Profilname",
+          V2 = "BEISPIELDATENSATZ",
+          V3 = "2099-01-01",
+          stringsAsFactors = FALSE
+        )
+      )
       
       vergleich_data_start <- data.frame(
         Anzahl_Lotrechten = nrow(defaultDF),
