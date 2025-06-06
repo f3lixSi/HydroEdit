@@ -1,3 +1,22 @@
+# -----------------------------------------------------------------------------
+#  HydroEdit – Bearbeitung von Durchflussmessungen
+#  Copyright (C) 2025 Felix Simon, Hochschule Bochum
+#
+#  Diese Datei ist Teil von HydroEdit.
+#
+#  HydroEdit ist freie Software: Du kannst sie unter den Bedingungen
+#  der GNU General Public License, Version 3, wie von der Free Software
+#  Foundation veröffentlicht, weiterverbreiten und/oder modifizieren.
+#
+#  HydroEdit wird in der Hoffnung verteilt, dass es nützlich sein wird, aber
+#  OHNE JEDE GEWÄHRLEISTUNG, sogar ohne die implizite Garantie der
+#  MARKTFÄHIGKEIT oder EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
+#  Siehe die GNU General Public License v3 für weitere Details.
+#
+#  Eine Kopie der GPL v3 sollte zusammen mit diesem Programm verteilt sein.
+#  Falls nicht, siehe <https://www.gnu.org/licenses/>.
+# -----------------------------------------------------------------------------
+
 library(shiny)
 library(bslib)
 library(ggplot2)
@@ -367,7 +386,8 @@ ui <- page_sidebar(
               checkboxInput("zweipunkt_kreps", "Für Zweipunkt-Methode Kreps-Berechnung verwenden", value = FALSE),
               selectInput("flussVerfahren", "Durchflussverfahren wählen:",
                           choices = c("Querschnittsmitte" = "mitte", "Mittlerer Querschnitt" = "mittel"),
-                          selected = "mitte")
+                          selected = "mitte"),
+              actionButton("show_help", "Hilfe", icon = icon("question-circle"), class = "btn btn-info btn-sm")
             )
           )
         ),
@@ -414,10 +434,16 @@ ui <- page_sidebar(
       )
     )
   ),
-  div(style = "display: flex; align-items: center; gap: 20px; padding: 10px;",
-      tags$img(src = "hydroedit.png", height = "95px", style = "margin-right: 10px;"),
-      tags$h3("HydroEdit - Bearbeitung von Durchflussmessungen", style = "margin: 10; color: #2c3e50")
-      ),
+  div(
+    style = "display: flex; justify-content: space-between; align-items: center; padding: 10px;",
+    # Linke Seite: Logo + Titel
+    div(style = "display: flex; align-items: center; gap: 20px;",
+        tags$img(src = "hydroedit.png", height = "95px"),
+        tags$h3("HydroEdit – Bearbeitung von Durchflussmessungen", style = "margin: 0; color: #2c3e50")
+    ),
+    # Rechte Seite: About‐Button
+    actionButton("about", "About", class = "btn btn-outline-primary")
+  ),
   navset_card_underline(
     title = "ANZEIGE",
     nav_panel("Plot Querschnitt", 
@@ -444,6 +470,153 @@ ui <- page_sidebar(
 # -----------------------------------------------------------------------------
 # Server-Definition
 server <- function(input, output, session) {
+  
+  # About-Button
+  observeEvent(input$about, {
+    showModal(modalDialog(
+      size = "l",      # größeres Modal-Fenster
+      easyClose = TRUE,
+      footer = modalButton("Schließen"),
+      
+      # -----------------------
+      # Überschrift
+      tags$h3("About", style = "margin-top: 0;"),
+      
+      # -----------------------
+      # Versions‐ und Stand‐Information
+      tags$p(
+        tags$b("Version:"), "1.0.0", 
+        HTML("&nbsp;&nbsp;|&nbsp;&nbsp;"), 
+        tags$b("Stand: 06.2025"),
+        style = "margin-top: -10px; font-size: 0.9em; color: #666"
+      ),
+      
+      # -----------------------
+      # Einleitungstext
+      tags$p(
+        "Diese App wurde im Rahmen eines Vortrags beim 5. Bochumer Hydrometrie- Kolloqiums am ",
+        tags$a(href = "https://www.hochschule-bochum.de/fbb/einrichtungen-im-fachbereich/labore/labor-fuer-wasserbau/", "Lehrgebiet Wasserbau und Hydromechanik (LWH)"),
+        " der Hochschule Bochum entwickelt."
+      ),
+      
+      # -----------------------
+      # Lizenz-Information
+      tags$p(
+        "Dieses Tool steht unter der ",
+        tags$a(href = "https://www.gnu.org/licenses/gpl-3.0.de.html", "GPL v3"),
+        "-Lizenz. Du kannst den Quellcode unter den Bestimmungen von GPL v3 einsehen, verändern und weiterverbreiten."
+      ),
+      
+      # -----------------------
+      # Liste der verwendeten R-Pakete
+      tags$h4("Verwendete R-Pakete"),
+      tags$ul(
+        tags$li(tags$b("shiny,"), "Chang et al. (2018)"),
+        tags$li(tags$b("bslib,"), "Chang & Borges Ribeiro (2018)"),
+        tags$li(tags$b("ggplot2,"), "Wickham (2016)"),
+        tags$li(tags$b("dplyr,"), "Wickham et al. (2018)"),
+        tags$li(tags$b("tidyr,"), "Wickham et al. (2018)"),
+        tags$li(tags$b("plotly,"), "Sievert (2020)")
+      ),
+      
+      # -----------------------
+      # Kontakt
+      tags$h4("Kontakt"),
+      tags$p(
+        "Bei Fragen und Feedback wende dich bitte an: ",
+        tags$a(href = "mailto:felix.simon@hs-bochum.de", "Felix Simon")
+      ),
+      
+      # -----------------------
+      # Literaturverzeichnis
+      tags$h4("Literatur & Referenzen"),
+      tags$ul(
+        tags$li(
+          "Simon, F., Gaj, M., Schwarting, J., Mudersbach, C. (2025): Bewertung von Durchflussmessungen in Bezug auf die Messlotrechtenanzahl 2.0, WasserWirtschaft (7-8/2025), DOI: ",
+          tags$em("10.1007/s35147-025-2532-z"), " ",
+          tags$a(
+            href = "https://doi.org/10.1007/s35147-025-2532-z",
+            "https://doi.org/10.1007/s35147-025-2532-z",
+            target = "_blank"
+          )
+        ),
+        tags$li(
+          "Chang, W., Cheng, J., Allaire, J., Das, S., Xie, Y., & McPherson, J. (2018). ",
+          tags$em("shiny: Web Application Framework for R."), " ",
+          tags$a(
+            href = "https://CRAN.R-project.org/package=shiny",
+            "https://CRAN.R-project.org/package=shiny",
+            target = "_blank"
+          )
+        ),
+        tags$li(
+          "Chang, W., & Borges Ribeiro, B. (2018). ",
+          tags$em("bslib: 'Bootstrap' Themes for 'Shiny'."), " ",
+          tags$a(
+            href = "https://CRAN.R-project.org/package=bslib",
+            "https://CRAN.R-project.org/package=bslib",
+            target = "_blank"
+          )
+        ),
+        tags$li(
+          "Wickham, H. (2016). ",
+          tags$em("ggplot2: Elegant Graphics for Data Analysis."), " Springer-Verlag New York. ",
+          tags$a(
+            href = "http://ggplot2.org",
+            "http://ggplot2.org",
+            target = "_blank"
+          )
+        ),
+        tags$li(
+          "Wickham, H., François, R., Henry, L., & Müller, K. (2018). ",
+          tags$em("dplyr: A Grammar of Data Manipulation."), " ",
+          tags$a(
+            href = "https://CRAN.R-project.org/package=dplyr",
+            "https://CRAN.R-project.org/package=dplyr",
+            target = "_blank"
+          )
+        ),
+        tags$li(
+          "Wickham, H., & Henry, L. (2018). ",
+          tags$em("tidyr: Tidy Messy Data."), " ",
+          tags$a(
+            href = "https://CRAN.R-project.org/package=tidyr",
+            "https://CRAN.R-project.org/package=tidyr",
+            target = "_blank"
+          )
+        ),
+        tags$li(
+          "Sievert, C. (2020). ",
+          tags$em("Interactive Web-Based Data Visualization with 'plotly' in R."), " ",
+          tags$a(
+            href = "https://plotly.com/r/",
+            "https://plotly.com/r/",
+            target = "_blank"
+          )
+        )
+      )
+    ))
+  })
+  
+  # Hilfe-Modal anzeigen
+  observeEvent(input$show_help, {
+    showModal(modalDialog(
+      title = "Kurzanleitung zur Nutzung von HydroEdit",
+      tags$div(
+        tags$ul(
+          tags$li(strong("Datei hochladen:"), " Hier können Sie Ihre .tsv-Messdatei hochladen."),
+          tags$li(strong("Zweipunkt-Kreps-Berechnung:"), " Aktivieren, falls bei 2-Punkt-Messung die Kreps-Formel verwendet werden soll."),
+          tags$li(strong("Durchflussverfahren:"), " Wählen Sie zwischen 'Querschnittsmitte', (Standard) und 'Mittlerer Querschnitt'."),
+          tags$li(strong("Lotrechte entfernen:"), " Mit den Buttons entfernen Sie ganze Lotrechten; mit Aktivieren von 'Einzelne Messpunkte entfernen' klicken Sie auf einen Punkt im Plot, um diesen einzelnen Messwert aus der Lotrechte zu löschen."),
+          tags$li(strong("Werte anzeigen / Vergleich:"), " Nach jeder Änderung können Sie den aktuellen Durchfluss & die Fläche sehen und mit 'Werte hinzufügen' in den Vergleichs-Tab übernehmen."),
+          tags$li(strong("Reset:"), " Setzt alle Änderungen an den Lotrechten zurück.")
+        )
+      ),
+      easyClose = TRUE,
+      footer = modalButton("Schließen")
+      
+    ))
+  })
   
   # Reaktive Werte
   original_data <- reactiveVal()
