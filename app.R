@@ -78,40 +78,245 @@ calcMeanFlowVelocity <- function(row, useKreps = FALSE) {
   }
 }
 
+# ---- Datei‐Typ Erkennung und spezifische Lese‐Routinen für verschiedene Firmware ----
+
+detectFileType <- function(path) {
+  # Lese die ersten 10 Zeilen ein, in denen die Metadaten typischerweise stehen
+  hdr <- readLines(path, n = 10, warn = FALSE)
+
+  # Suche nach dem Text "Anwend.:" gefolgt von einem Leerzeichen und vVersion im deutschen Format
+  if (any(grepl("Anwend\\.: v2,0[5-9]", hdr))) {
+    return("OTT_MF_pro_v205_plus")
+  }
+  if (any(grepl("Anwend\\.: v2,00", hdr))) {
+    return("OTT_MF_pro_v200")
+  }
+  if (any(grepl("Anwend\\.: v1,06", hdr))) {
+    return("OTT_MF_pro_v106")
+  }
+
+  # Alles andere → generic
+  return("generic")
+}
+
+read_OTT_MF_pro_v205_plus <- function(path) {
+  lines <- readLines(path, warn = FALSE, encoding = "latin1")
+  hdr_idx <- which(grepl("^Zeit\\s+Lotrechte", lines))[1]
+  if (is.na(hdr_idx)) stop("Messdaten-Kopfzeile nicht gefunden in v2.05+")
+  
+  read.table(path,
+             skip   = hdr_idx - 1,
+             header = TRUE,
+             sep    = "\t",
+             dec    = ",",
+             fill   = TRUE,
+             encoding = "latin1",
+             stringsAsFactors = FALSE)
+}
+
+read_OTT_MF_pro_v200 <- function(path) {
+  lines <- readLines(path, warn = FALSE, encoding = "latin1")
+  hdr_idx <- which(grepl("^Zeit\\s+Lotrechte", lines))[1]
+  if (is.na(hdr_idx)) stop("Messdaten-Kopfzeile nicht gefunden in v2.00")
+  
+  read.table(path,
+             skip   = hdr_idx - 1,
+             header = TRUE,
+             sep    = "\t",
+             dec    = ",",
+             fill   = TRUE,
+             encoding = "latin1",
+             stringsAsFactors = FALSE)
+}
+
+read_OTT_MF_pro_v106 <- function(path) {
+  lines <- readLines(path, warn = FALSE, encoding = "latin1")
+  hdr_idx <- which(grepl("^Zeit\\s+Lotrechte", lines))[1]
+  if (is.na(hdr_idx)) stop("Messdaten-Kopfzeile nicht gefunden in v1.06")
+  
+  df <- read.table(path,
+                   skip = hdr_idx - 1,
+                   header = TRUE,
+                   sep = "\t",
+                   dec = ",",
+                   fill = TRUE,
+                   encoding = "latin1",
+                   check.names = FALSE,
+                   stringsAsFactors = FALSE)
+  
+  # Fix encoding
+  names(df) <- iconv(names(df), from = "latin1", to = "UTF-8")
+  
+  # Entferne komplett leere Spaltennamen
+  df <- df[, names(df) != ""]
+  
+  # Sanftes Umbenennen
+  rename_safe <- function(colnames) {
+    colnames <- gsub(",", ".", colnames, fixed = TRUE)
+    colnames <- gsub(" ", "", colnames, fixed = TRUE)
+    colnames <- gsub("\\(m/s\\)", ".m.s.", colnames)
+    colnames <- gsub("\\(m\\)", ".m.", colnames)
+    colnames <- gsub("\\(m\\^2\\)", ".m.2.", colnames)
+    colnames <- gsub("\\(m\\^3/s\\)", ".m.3.s.", colnames)
+    colnames <- gsub("0.2", "X0.2", colnames, fixed = TRUE)
+    colnames <- gsub("0.4", "X0.4", colnames, fixed = TRUE)
+    colnames <- gsub("0.5", "X0.5", colnames, fixed = TRUE)
+    colnames <- gsub("0.6", "X0.6", colnames, fixed = TRUE)
+    colnames <- gsub("0.62", "X0.62", colnames, fixed = TRUE)
+    colnames <- gsub("0.7", "X0.7", colnames, fixed = TRUE)
+    colnames <- gsub("0.8", "X0.8", colnames, fixed = TRUE)
+    colnames <- gsub("0.9", "X0.9", colnames, fixed = TRUE)
+    colnames <- gsub("\\.+", "..", colnames)
+    return(colnames)
+  }
+  names(df) <- rename_safe(names(df))
+  
+  # Referenzspaltenliste gemäß v2.05
+  v205_cols <- c(
+    "Zeit", "Lotrechte", "Lage..m.", "Methode", "Methode.1", "Tiefe..m.",
+    "Eisdicke..m.", "Referenzwasserstand..m.", "Randfakt.", "Korrekturfaktor",
+    "Oberfl...m.s.", "Oberfl...m..",
+    "X0.2..m.s.", "X0.2..m..", "X0.4..m.s.", "X0.4..m..", "X0.5..m.s.", "X0.5..m..",
+    "X0.6..m.s.", "X0.6..m..", "X0.62..m.s.", "X0.62..m..",
+    "X0.7..m.s.", "X0.7..m..", "X0.8..m.s.", "X0.8..m..", "X0.9..m.s.", "X0.9..m..",
+    "Sohle..m.s.", "Sohle..m..",
+    "mittlere.Geschw...m.s.", "Flaeche..m.2.", "Durchfl...m.3.s.",
+    "X"  # falls vorhanden
+  )
+  
+  # Fehlende Spalten hinzufügen
+  for (col in v205_cols) {
+    if (!(col %in% names(df))) {
+      df[[col]] <- NA
+    }
+  }
+  
+  # Sortieren nach v2.05-Struktur
+  df <- df[, v205_cols[v205_cols %in% names(df)]]
+  
+  return(df)
+}
+
+read_generic <- function(path) {
+  read.table(path,
+             header = TRUE,
+             sep    = "\t",
+             dec    = ",",
+             fill   = TRUE,
+             encoding = "latin1",
+             stringsAsFactors = FALSE)
+}
+
+# Funktion für Meta-Daten einlesen je nach filetype
+read_meta_data_by_filetype <- function(path, filetype) {
+  if (filetype == "OTT_MF_pro_v106") {
+    # v1.06 → andere Struktur, 5 Zeilen ab Zeile 24
+    meta <- read.table(path,
+                       skip = 23, nrows = 5,
+                       sep = ":", dec = ",",
+                       fileEncoding = "latin1",
+                       stringsAsFactors = FALSE, fill = TRUE)
+    colnames(meta) <- c("Information", "Wert")
+    
+    # Wert bereinigen
+    meta$Wert <- iconv(meta$Wert, from = "latin1", to = "UTF-8")
+    meta$Wert <- gsub(",", ".", meta$Wert)
+    meta$Wert <- gsub("[^0-9.]", "", meta$Wert)
+    meta$Wert <- as.numeric(meta$Wert)
+    
+    # Mittlere Geschwindigkeit berechnen: Q / A
+    Q <- meta$Wert[3]
+    A <- meta$Wert[4]
+    mittlGeschw <- if (!is.na(Q) && !is.na(A) && A > 0) Q / A else NA_real_
+    
+    # Zusatzzeile anhängen
+    meta <- rbind(
+      meta,
+      data.frame(
+        Information = "mittlere Geschwindigkeit",
+        Wert        = round(mittlGeschw, 3),
+        stringsAsFactors = FALSE
+      )
+    )
+    
+    meta$Einheit <- c("-", "m", "m³/s", "m²", "m", "m/s")
+    return(meta)
+  }
+  
+  if (filetype == "OTT_MF_pro_v200") {
+    meta <- read.table(path,
+                       skip = 21, nrows = 6,
+                       sep = ":", dec = ",",
+                       fileEncoding = "latin1",
+                       stringsAsFactors = FALSE, fill = TRUE)
+    colnames(meta) <- c("Information", "Wert")
+    
+    meta$Wert <- iconv(meta$Wert, from = "latin1", to = "UTF-8")
+    meta$Wert <- gsub(",", ".", meta$Wert)
+    meta$Wert <- gsub("[^0-9.]", "", meta$Wert)
+    meta$Wert <- as.numeric(meta$Wert)
+    
+    meta$Einheit <- c("-", "m", "m³/s", "m²", "m", "m/s")
+    return(meta)
+  }
+  
+  if (filetype == "OTT_MF_pro_v205_plus") {
+    meta <- read.table(path,
+                       skip = 21, nrows = 6,
+                       sep = ":", dec = ",",
+                       fileEncoding = "latin1",
+                       stringsAsFactors = FALSE, fill = TRUE)
+    colnames(meta) <- c("Information", "Wert")
+    
+    meta$Wert <- iconv(meta$Wert, from = "latin1", to = "UTF-8")
+    meta$Wert <- gsub(",", ".", meta$Wert)
+    meta$Wert <- gsub("[^0-9.]", "", meta$Wert)
+    meta$Wert <- as.numeric(meta$Wert)
+    
+    meta$Einheit <- c("-", "m", "m³/s", "m²", "m", "m/s")
+    return(meta)
+  }
+  
+  # generic fallback
+  return(data.frame(
+    Information = NA,
+    Wert        = NA,
+    Einheit     = NA,
+    stringsAsFactors = FALSE
+  ))
+}
+
+
+# Funktion für Pegelinfo einlesen je nach filetype
+read_pegel_info_by_filetype <- function(path, filetype) {
+  skip_val <- switch(
+    filetype,
+    OTT_MF_pro_v106      = 18,  # v1.06
+    OTT_MF_pro_v200      = 0,   # v2.00
+    OTT_MF_pro_v205_plus = 0,   # v2.05+
+    0                    # fallback
+  )
+  
+  pegelinfo <- tryCatch({
+    read.table(
+      path,
+      skip = skip_val,
+      nrows = 3,
+      sep = "", 
+      fileEncoding = "latin1",
+      stringsAsFactors = FALSE, 
+      fill = TRUE
+    )
+  }, error = function(e) {
+    warning("Fehler beim Einlesen der Pegelinfo: ", e$message)
+    return(data.frame())
+  })
+  
+  return(pegelinfo)
+}
+
 
 # Beispielhafter Startdatensatz mit 20 Lotrechten
-# generate_default_dataset <- function() {
-#   set.seed(42)
-#   lotrechten <- 1:20
-#   lage <- seq(0, 4.75, length.out = 20)  # gleichmäßiger Abstand
-#   
-#   # Tiefe folgt einem U-förmigen Profil mit etwas Asymmetrie
-#   tiefe <- 1 - (lage - 2.5)^2 / 6 + runif(20, -0.05, 0.05)
-#   tiefe <- round(pmax(tiefe, 0.3), 2)
-#   
-#   # Geschwindigkeit je nach Tiefe etwas gestaffelt (3-Punkt Beispiel)
-#   v_02 <- round(runif(20, 0.3, 0.5), 3)
-#   v_06 <- round(v_02 + runif(20, 0.1, 0.2), 3)
-#   v_08 <- round(v_06 - runif(20, 0.05, 0.1), 3)
-#   
-#   # Methode = 3 für 3-Punkt
-#   methode <- rep(3, 20)
-#   
-#   df <- data.frame(
-#     Zeit = Sys.time(),
-#     Lotrechte = lotrechten,
-#     `Lage (m)` = lage,
-#     Methode = methode,
-#     `Tiefe (m)` = tiefe,
-#     `0,2 (m/s)` = v_02,
-#     `0,6 (m/s)` = v_06,
-#     `0,8 (m/s)` = v_08,
-#     check.names = FALSE
-#   )
-#   
-#   return(df)
-# }
-
 createDefaultData <- function() {
   set.seed(123)  
   
@@ -352,7 +557,16 @@ standardizeDataset <- function(df_original, useKreps = FALSE) {
     TRUE ~ gsub(" \\(m/s\\)$", "", SpeedVar)
   ))
   
-  df_points <- left_join(df_depth, df_speed, by = c("Lotrechte", "Messpunkt", "Lage (m)", "Tiefe (m)"))
+  join_keys <- c("Lotrechte", "Messpunkt", "Lage (m)", "Tiefe (m)")
+  # nur die Keys verwenden, die in beiden Dataframes existieren
+  use_keys  <- join_keys[join_keys %in% names(df_depth) & join_keys %in% names(df_speed)]
+  
+  df_points <- left_join(
+    df_depth,
+    df_speed,
+    by           = use_keys,
+    relationship = "many-to-many"  # unterdrückt die Warning, falls Messpunkt-Kombinationen mehrfach vorkommen
+  )
   df_points <- df_points %>% filter(!is.na(x_m) & x_m != 0)
   
   return(list(df_line = df_line, df_points = df_points))
@@ -636,12 +850,77 @@ server <- function(input, output, session) {
     active_data_points(standard$df_points)
   })
   
-  # Datei einlesen
+  # Datei einlesen und standardisieren (mit Fallback bei Kopfzeilen-Fehler)
   observeEvent(input$file, {
     req(input$file)
-    df_raw <- read.table(input$file$datapath, skip = 29, header = TRUE,
-                         sep = "\t", dec = ",", stringsAsFactors = FALSE)
-    df_raw <- df_raw %>% select(-X)
+    
+    # 1) Typ ermitteln
+    filetype <- detectFileType(input$file$datapath)
+    
+    # 1a) Feedback geben
+    system_name <- switch(
+      filetype,
+      OTT_MF_pro_v205_plus = "OTT MF pro (Firmware ≥ v2.05)",
+      OTT_MF_pro_v200      = "OTT MF pro (Firmware v2.00)",
+      OTT_MF_pro_v106      = "OTT MF pro (Firmware v1.06)",
+      generic              = "unbekanntes oder generisches Format"
+    )
+    
+    showNotification(
+      paste0("Datei erkannt als: ", system_name),
+      type = "message", duration = 5
+    )
+    
+    # 2) Reader aufrufen, mit Fallback auf generic, wenn Kopfzeile fehlt
+    df_raw <- tryCatch(
+      {
+        switch(filetype,
+               OTT_MF_pro_v205_plus = read_OTT_MF_pro_v205_plus(input$file$datapath),
+               OTT_MF_pro_v200      = read_OTT_MF_pro_v200(input$file$datapath),
+               OTT_MF_pro_v106      = read_OTT_MF_pro_v106(input$file$datapath),
+               generic              = read_generic(input$file$datapath)
+        )
+      },
+      error = function(e) {
+        if (grepl("Messdaten-Kopfzeile nicht gefunden", e$message)) {
+          showNotification(
+            "Automatischer Import fehlgeschlagen – verwende generischen Import.",
+            type = "warning",
+            duration = 5
+          )
+          return(read_generic(input$file$datapath))
+        } else {
+          # alle anderen Fehler weiterwerfen
+          stop(e)
+        }
+      }
+    )
+    
+    # 2a) Fallback, falls der spezialisierte Reader kein gültiges Daten-Frame geliefert hat:
+    # Fallback nur, wenn wirklich weder "Zeit" noch "Lotrechte" gefunden wurden
+    if (!any(c("Zeit", "Lotrechte") %in% colnames(df_raw))) {
+      showNotification(
+        "Import liefert weder 'Zeit' noch 'Lotrechte' – verwende Fallback skip=29.",
+        type = "error", duration = 5
+      )
+      df_raw <- read.table(
+        input$file$datapath,
+        skip   = 29,
+        header = TRUE,
+        sep    = "\t",
+        dec    = ",",
+        stringsAsFactors = FALSE
+      )
+    }
+    
+    # 3) Debug-Ausgabe
+    cat(">>> Spalten nach Import:\n")
+    print(colnames(df_raw))
+    
+    # 4) Entferne mögliche X-Spalte
+    df_raw <- df_raw %>% select(-tidyr::any_of("X"))
+    
+    # 5) Umbenennen der Messspalten auf Standardschema
     new_names <- c(
       "Lage (m)" = "Lage..m.",
       "Tiefe (m)" = "Tiefe..m.",
@@ -672,52 +951,51 @@ server <- function(input, output, session) {
       "Flaeche (m^2)" = "Flaeche..m.2.",
       "Durchfl. (m^3/s)" = "Durchfl...m.3.s."
     )
-    for(newName in names(new_names)) {
+    for (newName in names(new_names)) {
       oldName <- new_names[[newName]]
-      if(oldName %in% colnames(df_raw)) {
+      if (oldName %in% colnames(df_raw)) {
         df_raw <- df_raw %>% rename(!!newName := all_of(oldName))
       }
     }
+    
+    # 6) 0 in den Tiefen-Spalten → NA
     depthCols <- c("X0.2..m..", "X0.4..m..", "X0.5..m..", "X0.6..m..", 
                    "X0.62..m..", "X0.7..m..", "X0.8..m..", "X0.9..m..", 
                    "Oberfl. (m):", "Sohle (m):")
-    for(cc in depthCols) {
-      if(cc %in% colnames(df_raw)) {
+    for (cc in depthCols) {
+      if (cc %in% colnames(df_raw)) {
         df_raw[[cc]] <- ifelse(df_raw[[cc]] == 0, NA, df_raw[[cc]])
       }
     }
     
-    # Wenn die Spalte "Methode" nicht vorhanden ist oder alle Werte NA oder leer sind,
-    # dann verwenden wir den Wert aus "Methode.1".
-    if (!"Methode" %in% names(df_raw) || all(is.na(df_raw$Methode)) || all(df_raw$Methode == "")) {
+    # 7) Methode-Spalte füllen (Fallback auf Methode.1)
+    if (!"Methode" %in% names(df_raw) ||
+        all(is.na(df_raw$Methode)) ||
+        all(df_raw$Methode == "")) {
       if ("Methode.1" %in% names(df_raw)) {
         df_raw$Methode <- df_raw$`Methode.1`
       } else {
-        df_raw$Methode <- NA
+        df_raw$Methode <- NA_character_
       }
     }
     
+    # 8) in reactives schreiben
     original_data(df_raw)
     standard <- standardizeDataset(df_raw, useKreps = input$zweipunkt_kreps)
     active_data_line(standard$df_line)
     active_data_points(standard$df_points)
     
-    meta_pegel <- read.table(input$file$datapath, skip = 21, nrows = 6, 
-                             sep = ":", dec = ",", stringsAsFactors = FALSE) %>%
-      rename(Information = V1, Wert = V2) %>%
-      mutate(Einheit = c("-","m","m³/s","m²","m","m/s"))
-    meta_pegel[,2] <- gsub("[^0-9,.]", "", meta_pegel[,2])
-    meta_pegel[,2] <- gsub(",", ".", meta_pegel[,2]) %>% as.numeric() %>% round(digits = 3)
+    # 9) Metadaten + Vergleichsdaten wie gehabt
+    meta_pegel <- read_meta_data_by_filetype(input$file$datapath, filetype)
     meta_data(meta_pegel)
     
-    pegelinfo <- read.table(input$file$datapath, nrows = 3, 
-                            sep = "", stringsAsFactors = FALSE)
+    pegelinfo <- read_pegel_info_by_filetype(input$file$datapath, filetype)
     pegel_info(pegelinfo)
     
     vergleich_data_start <- data.frame(
       Anzahl_Lotrechten = meta_data()[1,2],
-      Q = meta_data()[3,2],
-      A = meta_data()[4,2],
+      Q                = meta_data()[3,2],
+      A                = meta_data()[4,2],
       stringsAsFactors = FALSE
     )
     vergleich_data_start$Anzahl_Lotrechten <- factor(vergleich_data_start$Anzahl_Lotrechten)
@@ -1094,9 +1372,22 @@ server <- function(input, output, session) {
       durchfluss_aktuell(0)
       return()
     }
-    df_calc <- dfL %>% 
+    
+    df_calc <- dfL %>%
       select("Lotrechte", b = "Lage (m)", h = "Tiefe (m)", v = "mittlere Geschw. (m/s)") %>%
-      mutate(q = 0)
+      mutate(
+        b = as.numeric(b),
+        h = as.numeric(h),
+        v = as.numeric(v),
+        q = 0
+      )
+    
+    # Optional: Debug-Ausgabe bei fehlerhaften Werten
+    if (any(is.na(df_calc$b)) || any(is.na(df_calc$h)) || any(is.na(df_calc$v))) {
+      warning("Nicht-numerische Werte in 'Lage', 'Tiefe' oder 'Geschwindigkeit' – Durchflussberechnung könnte fehlschlagen.")
+      print(str(df_calc))
+    }
+    
     if (input$flussVerfahren == "mitte") {
       if (n >= 3) {
         for (i in 2:(n - 1)) {
@@ -1110,6 +1401,7 @@ server <- function(input, output, session) {
           ((df_calc$h[i] + df_calc$h[i + 1]) / 2)
       }
     }
+    
     Q <- round(sum(df_calc$q, na.rm = TRUE), 3)
     durchfluss_aktuell(Q)
   })
@@ -1131,12 +1423,28 @@ server <- function(input, output, session) {
     req(active_data_line())
     dfL <- active_data_line()
     n <- nrow(dfL)
+    
     if (n < 2) {
       querschnittsflaeche_aktuell(0)
       return()
     }
-    df_calc <- dfL %>% select("Lotrechte", b = "Lage (m)", h = "Tiefe (m)")
-    A <- sum((df_calc$b[-1] - df_calc$b[-n]) * (df_calc$h[-1] + df_calc$h[-n]) / 2)
+    
+    df_calc <- dfL %>% 
+      select("Lotrechte", b = "Lage (m)", h = "Tiefe (m)") %>%
+      mutate(
+        b = as.numeric(b),
+        h = as.numeric(h)
+      )
+    
+    # Prüfe auf NA-Werte (z. B. durch nicht-numerische Eingaben)
+    if (any(is.na(df_calc$b)) || any(is.na(df_calc$h))) {
+      warning("Nicht-numerische Werte in 'Lage' oder 'Tiefe' – Flächenberechnung könnte fehlschlagen.")
+      print(str(df_calc))
+      querschnittsflaeche_aktuell(NA_real_)
+      return()
+    }
+    
+    A <- sum((df_calc$b[-1] - df_calc$b[-n]) * (df_calc$h[-1] + df_calc$h[-n]) / 2, na.rm = TRUE)
     querschnittsflaeche_aktuell(round(A, 3))
   })
   
@@ -1270,37 +1578,66 @@ server <- function(input, output, session) {
   # Ausgabe des Querschnittsplots (interaktiv)
   output$plotOutput_querschnitt <- renderPlotly({
     req(active_data_line(), active_data_points(), pegel_info())
+    
+    df_line <- active_data_line()
+    df_points <- active_data_points()
+    
+    # Zwangskonvertierung der Spalten
+    df_line$`Lage (m)` <- as.numeric(df_line$`Lage (m)`)
+    df_line$`Tiefe (m)` <- as.numeric(df_line$`Tiefe (m)`)
+    
+    df_points$`Lage (m)` <- as.numeric(df_points$`Lage (m)`)
+    df_points$x_m <- as.numeric(df_points$x_m)
+    df_points$v_ms <- as.numeric(df_points$v_ms)
+    
+    # Prüfe, ob die relevanten Spalten gültige Werte haben
+    if (all(is.na(df_line$`Lage (m)`)) || all(is.na(df_line$`Tiefe (m)`))) {
+      warning("Plot kann nicht erzeugt werden – 'Lage (m)' oder 'Tiefe (m)' enthält nur NAs.")
+      return(NULL)
+    }
+    
     p <- ggplot() +
-      geom_line(data = active_data_line(), aes(x = `Lage (m)`, y = `Tiefe (m)`)) +
+      geom_line(data = df_line, aes(x = `Lage (m)`, y = `Tiefe (m)`)) +
       geom_point(
-        data = active_data_points() %>% 
-          mutate(Messpunkt_orig = as.character(Messpunkt),
-                 Messpunkt = factor(Messpunkt,
-                                    levels = c("Oberfl.", "0,2", "0,4", "0,5", "0,6", "0,62", "0,7", "0,8", "0,9", "Sohle"),
-                                    labels = c("Oberfl.", "20%", "40%", "50%", "60%", "62%", "70%", "80%", "90%", "Sohle")
-                 )),
+        data = df_points %>%
+          mutate(
+            Messpunkt_orig = as.character(Messpunkt),
+            Messpunkt = factor(Messpunkt,
+                               levels = c("Oberfl.", "0,2", "0,4", "0,5", "0,6", "0,62", "0,7", "0,8", "0,9", "Sohle"),
+                               labels = c("Oberfl.", "20%", "40%", "50%", "60%", "62%", "70%", "80%", "90%", "Sohle")
+            )
+          ),
         aes(
-          x = `Lage (m)`, 
-          y = x_m, 
+          x = `Lage (m)`,
+          y = x_m,
           color = Messpunkt,
           text = paste("Lage:", sprintf("%.2f", `Lage (m)`), "m",
                        "\nTiefe:", sprintf("%.2f", x_m), "m (", Messpunkt, ")",
                        "\nGeschwindigkeit:", sprintf("%.3f", v_ms), "m/s"),
-          # Verwende Messpunkt_orig für customdata, damit der Originalwert übergeben wird
           customdata = paste(`Lotrechte`, Messpunkt_orig, sep = "_")
         )
       ) +
-      labs(x = "Lage (m)", y = "Tiefe (m)",
-           title = paste("Messung:", pegel_info()[1,2]),
-           caption = paste("Messdatum:", pegel_info()[3,2]),
-           color = "Messpunkt") +
-      scale_x_continuous(breaks = seq(round(min(active_data_line()[["Lage (m)"]]), 2),
-                                      round(max(active_data_line()[["Lage (m)"]]), 2), 0.5)) +
+      labs(
+        x = "Lage (m)", y = "Tiefe (m)",
+        title = paste("Messung:", pegel_info()[1, 2]),
+        caption = paste("Messdatum:", pegel_info()[3, 2]),
+        color = "Messpunkt"
+      ) +
+      scale_x_continuous(
+        breaks = seq(
+          round(min(df_line$`Lage (m)`, na.rm = TRUE), 2),
+          round(max(df_line$`Lage (m)`, na.rm = TRUE), 2),
+          0.5
+        )
+      ) +
       scale_y_reverse() +
-      scale_color_manual(values = c("Oberfl." = "black", "20%" = "red", "40%" = "orange",
-                                    "50%" = "purple", "60%" = "green", "62%" = "darkgreen",
-                                    "70%" = "pink", "80%" = "blue", "90%" = "brown", "Sohle" = "grey")) +
+      scale_color_manual(values = c(
+        "Oberfl." = "black", "20%" = "red", "40%" = "orange", "50%" = "purple",
+        "60%" = "green", "62%" = "darkgreen", "70%" = "pink",
+        "80%" = "blue", "90%" = "brown", "Sohle" = "grey"
+      )) +
       theme_bw()
+    
     p <- ggplotly(p, tooltip = "text")
     event_register(p, "plotly_click")
     p
