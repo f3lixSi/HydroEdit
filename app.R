@@ -49,11 +49,11 @@ calcMeanFlowVelocity <- function(row, useKreps = FALSE) {
   # entweder in der Spalte "0,6 (m/s)" oder falls diese NA ist in "0,8 (m/s)" vorhanden sein kann.
   if(method == 2) {
     v0_2 <- as.numeric(row[["0,2 (m/s)"]])
-    v0_6 <- as.numeric(row[["0,6 (m/s)"]])
-    if(is.na(v0_6)) {
-      v0_6 <- as.numeric(row[["0,8 (m/s)"]])
+    v0_8 <- as.numeric(row[["0,8 (m/s)"]])
+    if(is.na(v0_8)) {
+      v0_8 <- as.numeric(row[["0,6 (m/s)"]])
     }
-    return(0.5 * (v0_2 + v0_6))
+    return(0.5 * (v0_2 + v0_8))
   } else if(method == 1) {
     return(as.numeric(row[["0,6 (m/s)"]]))
   } else if(method == 3) {
@@ -144,56 +144,77 @@ read_OTT_MF_pro_v106 <- function(path) {
                    check.names = FALSE,
                    stringsAsFactors = FALSE)
   
-  # Fix encoding
+  # Bereinige und repariere Spaltennamen
   names(df) <- iconv(names(df), from = "latin1", to = "UTF-8")
+  names(df) <- gsub("^\\s+|\\s+$", "", names(df))
+  names(df) <- gsub("\\.x$|\\.y$", "", names(df))
+  names(df)[names(df) == ""] <- paste0("V", which(names(df) == ""))
   
-  # Entferne komplett leere Spaltennamen
-  df <- df[, names(df) != ""]
+  names(df) <- gsub("Ã-Geschw\\. \\(m/s\\)|Ã˜-Geschw\\. \\(m/s\\)|Ø-Geschw\\. \\(m/s\\)", 
+                    "mittlere Geschw. (m/s)", names(df))
+  names(df) <- gsub("FlÃ¤che \\(m\\^2\\)", "Fläche (m^2)", names(df))
+  names(df) <- gsub("Durchfl\\.", "Durchfluss", names(df))
   
-  # Sanftes Umbenennen
-  rename_safe <- function(colnames) {
-    colnames <- gsub(",", ".", colnames, fixed = TRUE)
-    colnames <- gsub(" ", "", colnames, fixed = TRUE)
-    colnames <- gsub("\\(m/s\\)", ".m.s.", colnames)
-    colnames <- gsub("\\(m\\)", ".m.", colnames)
-    colnames <- gsub("\\(m\\^2\\)", ".m.2.", colnames)
-    colnames <- gsub("\\(m\\^3/s\\)", ".m.3.s.", colnames)
-    colnames <- gsub("0.2", "X0.2", colnames, fixed = TRUE)
-    colnames <- gsub("0.4", "X0.4", colnames, fixed = TRUE)
-    colnames <- gsub("0.5", "X0.5", colnames, fixed = TRUE)
-    colnames <- gsub("0.6", "X0.6", colnames, fixed = TRUE)
-    colnames <- gsub("0.62", "X0.62", colnames, fixed = TRUE)
-    colnames <- gsub("0.7", "X0.7", colnames, fixed = TRUE)
-    colnames <- gsub("0.8", "X0.8", colnames, fixed = TRUE)
-    colnames <- gsub("0.9", "X0.9", colnames, fixed = TRUE)
-    colnames <- gsub("\\.+", "..", colnames)
-    return(colnames)
-  }
-  names(df) <- rename_safe(names(df))
-  
-  # Referenzspaltenliste gemäß v2.05
-  v205_cols <- c(
-    "Zeit", "Lotrechte", "Lage..m.", "Methode", "Methode.1", "Tiefe..m.",
-    "Eisdicke..m.", "Referenzwasserstand..m.", "Randfakt.", "Korrekturfaktor",
-    "Oberfl...m.s.", "Oberfl...m..",
-    "X0.2..m.s.", "X0.2..m..", "X0.4..m.s.", "X0.4..m..", "X0.5..m.s.", "X0.5..m..",
-    "X0.6..m.s.", "X0.6..m..", "X0.62..m.s.", "X0.62..m..",
-    "X0.7..m.s.", "X0.7..m..", "X0.8..m.s.", "X0.8..m..", "X0.9..m.s.", "X0.9..m..",
-    "Sohle..m.s.", "Sohle..m..",
-    "mittlere.Geschw...m.s.", "Flaeche..m.2.", "Durchfl...m.3.s.",
-    "X"  # falls vorhanden
+  name_mapping <- c(
+    "Zeit" = "Zeit", "Lotrechte" = "Lotrechte", "Lage (m)" = "Lage..m.",
+    "Methode" = "Methode", "Tiefe (m)" = "Tiefe..m.", "Randfakt." = "Randfakt.",
+    "mittlere Geschw. (m/s)" = "mittlere.Geschw...m.s.", "Fläche (m^2)" = "Flaeche..m.2.",
+    "Durchfluss (m^3/s)" = "Durchfl...m.3.s.",
+    "Oberfl. (m/s)" = "X0.0..m.s.", "0,2 (m/s)" = "X0.2..m.s.", "0,4 (m/s)" = "X0.4..m.s.",
+    "0,5 (m/s)" = "X0.5..m.s.", "0,6 (m/s)" = "X0.6..m.s.", "0,62 (m/s)" = "X0.62..m.s.",
+    "0,7 (m/s)" = "X0.7..m.s.", "0,8 (m/s)" = "X0.8..m.s.", "0,9 (m/s)" = "X0.9..m.s.", "Sohle (m/s)" = "Sohle..m.s.",
+    "Oberfl. (m):" = "X0.0..m..", "0,2 (m):" = "X0.2..m..", "0,4 (m):" = "X0.4..m..",
+    "0,5 (m):" = "X0.5..m..", "0,6 (m):" = "X0.6..m..", "0,62 (m):" = "X0.62..m..",
+    "0,7 (m):" = "X0.7..m..", "0,8 (m):" = "X0.8..m..", "0,9 (m):" = "X0.9..m..", "Sohle (m):" = "Sohle..m.."
   )
   
-  # Fehlende Spalten hinzufügen
-  for (col in v205_cols) {
-    if (!(col %in% names(df))) {
-      df[[col]] <- NA
+  df <- df %>% rename_with(~ name_mapping[.x], .cols = intersect(names(df), names(name_mapping)))
+  
+  # Methode.1 ergänzen (numerischer Code als character)
+  df$Methode.1 <- as.character(sapply(df$Methode, getMethodNumber))
+  
+  # Tiefe berechnen (nur für tatsächlich gemessene Punkte)
+  tiefe_numeric <- suppressWarnings(as.numeric(df[["Tiefe..m."]]))
+  mp_prozent <- c("X0.0" = 0, "X0.2" = 0.2, "X0.4" = 0.4, "X0.5" = 0.5, "X0.6" = 0.6,
+                  "X0.62" = 0.62, "X0.7" = 0.7, "X0.8" = 0.8, "X0.9" = 0.9, "Sohle" = 1)
+  
+  for (mp in names(mp_prozent)) {
+    x_col <- paste0(mp, "..m..")
+    if (!(x_col %in% names(df))) df[[x_col]] <- NA
+    method_allowed <- list(
+      "0" = character(0),
+      "1" = c("X0.6"),
+      "2" = c("X0.2", "X0.8"),
+      "2_kreps" = c("X0.0", "X0.62"),
+      "3" = c("X0.2", "X0.6", "X0.8"),
+      "5" = c("X0.0", "X0.2", "X0.6", "X0.8", "Sohle"),
+      "6" = c("X0.0", "X0.2", "X0.4", "X0.6", "X0.8", "Sohle")
+    )
+    for (i in seq_len(nrow(df))) {
+      m <- df$Methode.1[i]
+      if (!is.na(m)) {
+        allowed <- method_allowed[[m]]
+        if (!mp %in% allowed) df[[x_col]][i] <- NA
+        else df[[x_col]][i] <- round(tiefe_numeric[i] * mp_prozent[[mp]], 3)
+      } else {
+        df[[x_col]][i] <- NA
+      }
     }
   }
   
-  # Sortieren nach v2.05-Struktur
-  df <- df[, v205_cols[v205_cols %in% names(df)]]
+  # Fehlende Spalten ergänzen
+  all_cols <- c("Zeit", "Lotrechte", "Lage..m.", "Methode", "Methode.1", "Tiefe..m.",
+                "Eisdicke..m.", "Referenzwasserstand..m.", "Randfakt.", "Korrekturfaktor",
+                "Oberfl...m.s.", "Oberfl...m..", "X0.2..m.s.", "X0.2..m..", "X0.4..m.s.", "X0.4..m..",
+                "X0.5..m.s.", "X0.5..m..", "X0.6..m.s.", "X0.6..m..", "X0.62..m.s.", "X0.62..m..",
+                "X0.7..m.s.", "X0.7..m..", "X0.8..m.s.", "X0.8..m..", "X0.9..m.s.", "X0.9..m..",
+                "Sohle..m.s.", "Sohle..m..", "mittlere.Geschw...m.s.", "Flaeche..m.2.", "Durchfl...m.3.s.", "X")
   
+  for (col in setdiff(all_cols, names(df))) {
+    df[[col]] <- NA
+  }
+  
+  df <- df[, all_cols]
   return(df)
 }
 
@@ -291,7 +312,7 @@ read_meta_data_by_filetype <- function(path, filetype) {
 read_pegel_info_by_filetype <- function(path, filetype) {
   skip_val <- switch(
     filetype,
-    OTT_MF_pro_v106      = 18,  # v1.06
+    OTT_MF_pro_v106      = 0,  # v1.06
     OTT_MF_pro_v200      = 0,   # v2.00
     OTT_MF_pro_v205_plus = 0,   # v2.05+
     0                    # fallback
@@ -511,8 +532,18 @@ standardizeDataset <- function(df_original, useKreps = FALSE) {
                     "Sohle (m/s)", "mittlere Geschw. (m/s)", "Flaeche (m^2)",
                     "Durchfl. (m^3/s)", "Methode", "adjustedMethod", "vm")))
   
+  cat("<<< Spaltennamen vor getMethod:\n")
+  # # print(names(df_line))
+  # print(str(df_line$Methode))
   # Erzeuge die Spalte "Method" als numerischen Code basierend auf "Methode"
-  df_line <- df_line %>% mutate(Method = sapply(Methode, getMethodNumber))
+  cat("== DEBUG Methode RawCheck ==\n")
+  for (i in seq_len(min(10, nrow(df_line)))) {
+    val <- df_line$Methode[i]
+    cat(i, ": ", dQuote(val), " → ", getMethodNumber(val), "\n", sep = "")
+  }
+  
+  df_line$Method <- sapply(df_line$Methode, getMethodNumber)
+  print(unique(df_line$Method))
   
   # Erzeuge adjustedMethod und berechne vm
   df_line <- df_line %>%
@@ -701,7 +732,7 @@ server <- function(input, output, session) {
       tags$p(
         tags$b("Version:"), "1.0.0", 
         HTML("&nbsp;&nbsp;|&nbsp;&nbsp;"), 
-        tags$b("Stand: 06.2025"),
+        tags$b("Stand: 07.2025"),
         style = "margin-top: -10px; font-size: 0.9em; color: #666"
       ),
       
@@ -916,6 +947,9 @@ server <- function(input, output, session) {
     # 3) Debug-Ausgabe
     cat(">>> Spalten nach Import:\n")
     print(colnames(df_raw))
+    cat("<<< Methoden:\n")
+    print(unique(df_raw$Methode))
+    print(df_raw$Methode.1)
     
     # 4) Entferne mögliche X-Spalte
     df_raw <- df_raw %>% select(-tidyr::any_of("X"))
@@ -982,7 +1016,11 @@ server <- function(input, output, session) {
     # 8) in reactives schreiben
     original_data(df_raw)
     standard <- standardizeDataset(df_raw, useKreps = input$zweipunkt_kreps)
+    cat("<<<< Standard-Datensatz:\n")
+    print(standard$df_line$Method)
     active_data_line(standard$df_line)
+    cat(">>> Kontrolle nach Setzen von active_data_line:\n")
+    print(unique(active_data_line()$Method))
     active_data_points(standard$df_points)
     
     # 9) Metadaten + Vergleichsdaten wie gehabt
@@ -1053,9 +1091,9 @@ server <- function(input, output, session) {
     df <- df %>% mutate(MethodeText = 
                           if_else(!is.na(adjustedMethod) & adjustedMethod == "2_kreps",
                                   "2 Punkt nach Kreps",
-                                  if_else(!is.na(suppressWarnings(as.numeric(Methode))),
-                                          methodLabels[as.numeric(Methode) + 1],
-                                          Methode)))
+                                  if_else(!is.na(suppressWarnings(as.numeric(Method))),
+                                          methodLabels[as.numeric(Method) + 1],
+                                          as.character(Method))))
     
     # Wähle die zu zeigenden Spalten:
     df_display <- df %>% select(
@@ -1577,6 +1615,13 @@ server <- function(input, output, session) {
   # -----------------------------------------------------------------------------
   # Ausgabe des Querschnittsplots (interaktiv)
   output$plotOutput_querschnitt <- renderPlotly({
+    
+    print("=== DEBUG active_data_points() ===")
+    print(str(active_data_points()))
+    print(head(active_data_points()))
+    print("Spaltennamen:")
+    print(colnames(active_data_points()))
+    
     req(active_data_line(), active_data_points(), pegel_info())
     
     df_line <- active_data_line()
@@ -1595,6 +1640,7 @@ server <- function(input, output, session) {
       warning("Plot kann nicht erzeugt werden – 'Lage (m)' oder 'Tiefe (m)' enthält nur NAs.")
       return(NULL)
     }
+   
     
     p <- ggplot() +
       geom_line(data = df_line, aes(x = `Lage (m)`, y = `Tiefe (m)`)) +
