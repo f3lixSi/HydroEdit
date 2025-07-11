@@ -1,9 +1,11 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-# HydroEdit – Shiny-App zur Auswertung von OTT MF pro Messdaten
+# HydroEdit – Shiny-App zur Auswertung von Durchflussmessungen
 
-HydroEdit ist eine interaktive R-Shiny-Anwendung zur Visualisierung, Standardisierung und Auswertung von Durchflussmessungen mit OTT MF pro-Geräten (Firmware v1.06, v2.00, v2.05+). Ziel ist es, hydrometrische Querschnittsdaten einfach einlesen, aufbereiten und grafisch analysieren zu können.
+HydroEdit ist eine interaktive R-Shiny-Anwendung zur Visualisierung, Standardisierung und Auswertung von Durchflussmessungen.
+Ziel ist es, hydrometrische Querschnittsdaten einfach einlesen, aufbereiten und grafisch analysieren zu können.
+Aktuell werden nur Messungen mit OTT MF pro-Geräten (Firmware v1.06, v2.00, v2.05+) unterstützt. Weitere Messgeräte und Formate folgen.
 
 Lizenz: GNU General Public License v3.0 (GPL v3). Siehe LICENSE-Datei.
 
@@ -12,7 +14,8 @@ Lizenz: GNU General Public License v3.0 (GPL v3). Siehe LICENSE-Datei.
 - Automatische Erkennung der Firmware-Version (v1.06, v2.00, v2.05+)
 - Standardisierte Aufbereitung der Messdaten
 - Berechnung der mittleren Geschwindigkeit (vm) je nach Messmethode (inkl. 2-Punkt-Kreps)
-- Methodenabhängiges Setzen nicht gemessener Punkte auf NA
+- Interaktives entfernen von Messlotrechten oder Messpunkten
+- Vergleich der Messergebnisse bei geringerer Anzahl von Messlotrechten oder Messpunkten
 - Interaktive Visualisierung des Querschnitts mit Tiefen und Geschwindigkeiten
 - Anzeige von Metadaten (z. B. Q, A, n_Lotrechten) und Vergleich mit Originaldaten
 

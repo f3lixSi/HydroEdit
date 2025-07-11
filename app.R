@@ -532,18 +532,7 @@ standardizeDataset <- function(df_original, useKreps = FALSE) {
                     "Sohle (m/s)", "mittlere Geschw. (m/s)", "Flaeche (m^2)",
                     "Durchfl. (m^3/s)", "Methode", "adjustedMethod", "vm")))
   
-  cat("<<< Spaltennamen vor getMethod:\n")
-  # # print(names(df_line))
-  # print(str(df_line$Methode))
-  # Erzeuge die Spalte "Method" als numerischen Code basierend auf "Methode"
-  cat("== DEBUG Methode RawCheck ==\n")
-  for (i in seq_len(min(10, nrow(df_line)))) {
-    val <- df_line$Methode[i]
-    cat(i, ": ", dQuote(val), " → ", getMethodNumber(val), "\n", sep = "")
-  }
-  
   df_line$Method <- sapply(df_line$Methode, getMethodNumber)
-  print(unique(df_line$Method))
   
   # Erzeuge adjustedMethod und berechne vm
   df_line <- df_line %>%
@@ -944,13 +933,6 @@ server <- function(input, output, session) {
       )
     }
     
-    # 3) Debug-Ausgabe
-    cat(">>> Spalten nach Import:\n")
-    print(colnames(df_raw))
-    cat("<<< Methoden:\n")
-    print(unique(df_raw$Methode))
-    print(df_raw$Methode.1)
-    
     # 4) Entferne mögliche X-Spalte
     df_raw <- df_raw %>% select(-tidyr::any_of("X"))
     
@@ -1016,11 +998,7 @@ server <- function(input, output, session) {
     # 8) in reactives schreiben
     original_data(df_raw)
     standard <- standardizeDataset(df_raw, useKreps = input$zweipunkt_kreps)
-    cat("<<<< Standard-Datensatz:\n")
-    print(standard$df_line$Method)
     active_data_line(standard$df_line)
-    cat(">>> Kontrolle nach Setzen von active_data_line:\n")
-    print(unique(active_data_line()$Method))
     active_data_points(standard$df_points)
     
     # 9) Metadaten + Vergleichsdaten wie gehabt
@@ -1615,12 +1593,6 @@ server <- function(input, output, session) {
   # -----------------------------------------------------------------------------
   # Ausgabe des Querschnittsplots (interaktiv)
   output$plotOutput_querschnitt <- renderPlotly({
-    
-    print("=== DEBUG active_data_points() ===")
-    print(str(active_data_points()))
-    print(head(active_data_points()))
-    print("Spaltennamen:")
-    print(colnames(active_data_points()))
     
     req(active_data_line(), active_data_points(), pegel_info())
     
