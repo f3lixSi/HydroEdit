@@ -72,6 +72,7 @@ MIT License – siehe LICENSE
 
 ## :bust_in_silhouette: Autor
 
-**Felix Simon**  
-Wasserwirtschaft / Hydrometrie  
-[https://github.com/felix-simon](https://github.com/felix-simon)
+**Felix Simon**
+Hochschule Bochum
+Lehrgebiet Wasserbau und Hydromechanik  
+[https://github.com/f3lixSi](https://github.com/f3lixSi)
